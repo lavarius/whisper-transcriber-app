@@ -1,11 +1,18 @@
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# IDEs
+.vscode/
+.idea/
+
+# OS-specific
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.venv
+Thumbs.db
