@@ -5,9 +5,24 @@ import sys
 import torch
 import whisper
 import warnings
+from functools import partial
 
 # Suppress FP16 warning
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+
+def custom_load_model(name: str, device: str = None, download_root: str = None, in_memory: bool = False):
+    # Override the torch.load function in whisper's _load_model
+    original_torch_load = torch.load
+    torch.load = partial(original_torch_load, weights_only=True)
+    
+    try:
+        # Load the model using whisper's load_model function
+        model = whisper.load_model(name, device, download_root, in_memory)
+    finally:
+        # Restore the original torch.load function
+        torch.load = original_torch_load
+    
+    return model
 
 class WhisperApp(QMainWindow):
     def __init__(self):
@@ -50,41 +65,30 @@ class WhisperApp(QMainWindow):
         self.setCentralWidget(container)
 
     def load_model(self):
-        model_size = self.model_selector.currentText()
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        try:
-            self.status_text.setText(f"Status: Loading {model_size} model...")
-            QApplication.processEvents()
+            model_size = self.model_selector.currentText()
+            device = "cuda" if torch.cuda.is_available() else "cpu"
             
-            # Try loading with weights_only first
             try:
-                self.model = whisper.load_model(
-                    model_size,
-                    device=device,
-                    download_root=None,
-                    in_memory=True,
-                    weights_only=True
-                )
-                print(f"Loaded {model_size} model on {device} with weights_only=True")
-            except TypeError:
-                # If weights_only is not supported, fall back to default loading
-                print("weights_only not supported, using default loading")
-                self.model = whisper.load_model(
+                self.status_text.setText(f"Status: Loading {model_size} model...")
+                QApplication.processEvents()
+                
+                # Use the custom load_model function
+                self.model = custom_load_model(
                     model_size,
                     device=device,
                     download_root=None,
                     in_memory=True
                 )
-            
-            self.status_text.setText(f"Status: Successfully loaded {model_size} model on {device}")
-            
-        except Exception as e:
-            error_msg = f"Error loading model: {str(e)}"
-            print(error_msg)
-            self.status_text.setText(f"Status: {error_msg}")
-            self.result_text.setText(error_msg)
-            raise
+                
+                print(f"Loaded {model_size} model on {device} with weights_only=True")
+                self.status_text.setText(f"Status: Successfully loaded {model_size} model on {device}")
+                
+            except Exception as e:
+                error_msg = f"Error loading model: {str(e)}"
+                print(error_msg)
+                self.status_text.setText(f"Status: {error_msg}")
+                self.result_text.setText(error_msg)
+                raise
 
     def transcribe_audio(self):
         if self.model is None:
