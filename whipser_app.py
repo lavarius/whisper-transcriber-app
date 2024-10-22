@@ -60,6 +60,10 @@ class WhisperApp(QMainWindow):
         self.result_text = QTextEdit()
         layout.addWidget(self.result_text)
 
+        self.copy_button = QPushButton("Copy Transcription")
+        self.copy_button.clicked.connect(self.copy_transcription)
+        layout.addWidget(self.copy_button)
+
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
@@ -117,6 +121,11 @@ class WhisperApp(QMainWindow):
                 error_msg = f"Error during transcription: {str(e)}"
                 self.status_text.setText(f"Status: {error_msg}")
                 self.result_text.setText(error_msg)
+
+    def copy_transcription(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.result_text.toPlainText())
+        self.status_text.setText("Status: Transcription copied to clipboard")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
