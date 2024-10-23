@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton,
 import sys
 import torch
 import whisper
+from whisper import (_download, _MODELS)
 import warnings
 from functools import partial
 from pathlib import Path
@@ -90,12 +91,13 @@ class WhisperApp(QMainWindow):
         """Get the path where the model should be stored"""
         # Use user's home directory for model storage
         home = Path.home()
-        whisper_dir = home / '.cache' / 'whisper' / 'models'
-        return whisper_dir / f"{model_name}.pt"
+        whisper_dir = home / '.cache' / 'whisper'
+        whisper_dir.mkdir(parents=True, exist_ok=True)
+        return whisper_dir
 
     def is_model_downloaded(self, model_name):
         """Check if the model is already downloaded"""
-        model_path = self.get_model_path(model_name)
+        model_path = self.get_model_path(model_name) / f"{model_name}.pt"
         return model_path.exists()
 
     def download_model(self):
@@ -119,12 +121,11 @@ class WhisperApp(QMainWindow):
         QApplication.processEvents()
 
         try:
-            # Create directory if it doesn't exist
-            model_dir = self.get_model_path(model_name).parent
-            model_dir.mkdir(parents=True, exist_ok=True)
+            # Get the download directory
+            download_dir = self.get_model_path(model_name)
             
-            # Download the model
-            whisper.load_model(model_name)
+            # Use whisper's internal download function
+            _download(_MODELS[model_name], download_dir, in_memory=False)
             
             self.status_text.setText(f"Status: Successfully downloaded {model_name} model")
             QMessageBox.information(self, "Success", f"Successfully downloaded {model_name} model!")
@@ -159,19 +160,11 @@ class WhisperApp(QMainWindow):
         try:
             self.status_text.setText(f"Status: Loading {model_name} model...")
             QApplication.processEvents()
-
-            # # Create a cache directory in user's home directory if it doesn't exist
-            # cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
-            # os.makedirs(cache_dir, exist_ok=True)
             
-            # Use the custom load_model function
-            self.model = custom_load_model(
-                model_name,
-                device=device,
-                download_root=None,
-                in_memory=True
-            )
-            self.status_text.setText(f"Status: Successfully loaded {model_name} model on {device}")
+            # Use the default cache location for loading
+            self.model = whisper.load_model(model_name, device=device)
+            self.status_text.setText(f"Status: Successfully loaded {model_name} model")
+            return True
             
         except Exception as e:
             error_msg = f"Error loading model: {str(e)}"
