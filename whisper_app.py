@@ -1,3 +1,4 @@
+import os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, 
                               QFileDialog, QTextEdit, QVBoxLayout, 
                               QWidget, QComboBox, QLabel)
@@ -36,7 +37,7 @@ class WhisperApp(QMainWindow):
         layout = QVBoxLayout()
         
         # Model selection section
-        model_label = QLabel("Select Whisper Model:")
+        model_label = QLabel("Whisper Model:")
         layout.addWidget(model_label)
         
         self.model_selector = QComboBox()
@@ -75,6 +76,10 @@ class WhisperApp(QMainWindow):
             try:
                 self.status_text.setText(f"Status: Loading {model_size} model...")
                 QApplication.processEvents()
+
+                # Create a cache directory in user's home directory if it doesn't exist
+                cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
+                os.makedirs(cache_dir, exist_ok=True)
                 
                 # Use the custom load_model function
                 self.model = custom_load_model(
@@ -84,12 +89,10 @@ class WhisperApp(QMainWindow):
                     in_memory=True
                 )
                 
-                print(f"Loaded {model_size} model on {device} with weights_only=True")
                 self.status_text.setText(f"Status: Successfully loaded {model_size} model on {device}")
                 
             except Exception as e:
                 error_msg = f"Error loading model: {str(e)}"
-                print(error_msg)
                 self.status_text.setText(f"Status: {error_msg}")
                 self.result_text.setText(error_msg)
                 raise
