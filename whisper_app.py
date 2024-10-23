@@ -2,12 +2,13 @@ import os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, 
                               QFileDialog, QTextEdit, QVBoxLayout, 
                               QWidget, QComboBox, QLabel, QHBoxLayout,
-                              QProgressBar)
+                              QProgressBar, QMessageBox)
 import sys
 import torch
 import whisper
 import warnings
 from functools import partial
+from pathlib import Path
 
 # Suppress FP16 warning
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
@@ -38,14 +39,14 @@ class WhisperApp(QMainWindow):
         layout = QVBoxLayout()
         
         # Model selection section with download button
-        model_layout = QHBoxLayout()
+        model_layout = QHBoxLayout() # Create the horizontal layout
 
         model_label = QLabel("Whisper Model:")
-        model_layout = layout.addWidget(model_label)
+        model_layout.addWidget(model_label)
         
         self.model_selector = QComboBox()
         self.model_selector.addItems(["base", "small", "large"])
-        layout.addWidget(self.model_selector)
+        model_layout.addWidget(self.model_selector)
 
         self.download_button = QPushButton("Download Selected Model")
         self.download_button.clicked.connect(self.download_model)
@@ -80,39 +81,107 @@ class WhisperApp(QMainWindow):
         self.result_text = QTextEdit()
         layout.addWidget(self.result_text)
 
+        # Create main container
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-    def load_model(self):
-            model_size = self.model_selector.currentText()
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            try:
-                self.status_text.setText(f"Status: Loading {model_size} model...")
-                QApplication.processEvents()
+    def get_model_path(self, model_name):
+        """Get the path where the model should be stored"""
+        # Use user's home directory for model storage
+        home = Path.home()
+        whisper_dir = home / '.cache' / 'whisper' / 'models'
+        return whisper_dir / f"{model_name}.pt"
 
-                # Create a cache directory in user's home directory if it doesn't exist
-                cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
-                os.makedirs(cache_dir, exist_ok=True)
-                
-                # Use the custom load_model function
-                self.model = custom_load_model(
-                    model_size,
-                    device=device,
-                    download_root=None,
-                    in_memory=True
-                )
-                
-                self.status_text.setText(f"Status: Successfully loaded {model_size} model on {device}")
-                
-            except Exception as e:
-                error_msg = f"Error loading model: {str(e)}"
-                self.status_text.setText(f"Status: {error_msg}")
-                self.result_text.setText(error_msg)
-                raise
+    def is_model_downloaded(self, model_name):
+        """Check if the model is already downloaded"""
+        model_path = self.get_model_path(model_name)
+        return model_path.exists()
+
+    def download_model(self):
+        """Download the selected model"""
+        model_name = self.model_selector.currentText()
+        
+        if self.is_model_downloaded(model_name):
+            reply = QMessageBox.question(
+                self, 
+                'Model exists',
+                f'The {model_name} model is already downloaded. Download again?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return
+
+        self.status_text.setText(f"Status: Downloading {model_name} model...")
+        self.progress_bar.setVisible(True)
+        self.download_button.setEnabled(False)
+        QApplication.processEvents()
+
+        try:
+            # Create directory if it doesn't exist
+            model_dir = self.get_model_path(model_name).parent
+            model_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Download the model
+            whisper.load_model(model_name)
+            
+            self.status_text.setText(f"Status: Successfully downloaded {model_name} model")
+            QMessageBox.information(self, "Success", f"Successfully downloaded {model_name} model!")
+            
+        except Exception as e:
+            error_msg = f"Error downloading model: {str(e)}"
+            self.status_text.setText(f"Status: {error_msg}")
+            QMessageBox.critical(self, "Error", error_msg)
+            
+        finally:
+            self.progress_bar.setVisible(False)
+            self.download_button.setEnabled(True)
+
+    def load_model(self):
+        model_name = self.model_selector.currentText()
+
+        if not self.is_model_downloaded(model_name):
+            reply = QMessageBox.question(
+                self,
+                'Model not found',
+                f'The {model_name} model is not downloaded. Would you like to download it now?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                self.download_model()
+            else:
+                return False
+        
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        try:
+            self.status_text.setText(f"Status: Loading {model_name} model...")
+            QApplication.processEvents()
+
+            # # Create a cache directory in user's home directory if it doesn't exist
+            # cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
+            # os.makedirs(cache_dir, exist_ok=True)
+            
+            # Use the custom load_model function
+            self.model = custom_load_model(
+                model_name,
+                device=device,
+                download_root=None,
+                in_memory=True
+            )
+            self.status_text.setText(f"Status: Successfully loaded {model_name} model on {device}")
+            
+        except Exception as e:
+            error_msg = f"Error loading model: {str(e)}"
+            self.status_text.setText(f"Status: {error_msg}")
+            self.result_text.setText(error_msg)
+            QMessageBox.critical(self, "Error", error_msg)
+            raise
 
     def transcribe_audio(self):
+        # possibly needs edit MDB
         if self.model is None:
             try:
                 self.load_model()
