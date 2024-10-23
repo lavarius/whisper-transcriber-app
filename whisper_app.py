@@ -11,6 +11,12 @@ import warnings
 from functools import partial
 from pathlib import Path
 
+WHISPER_MODELS = {
+    "base": "https://openaipublic.azureedge.net/main/whisper/models/ed3a0b6b1c0edf879ad9b11b1af5a0e6ab5db9205f891f668f8b0e6c6326e34e/base.pt",
+    "small": "https://openaipublic.azureedge.net/main/whisper/models/9ecf779972d90ba49c06d968637d720dd632c55bbf19d441fb42bf17a411e794/small.pt",
+    "large": "https://huggingface.co/openai/whisper-large-v3/resolve/main/model.safetensors"  # Updated to v3
+}
+
 # Suppress FP16 warning
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 
@@ -104,32 +110,47 @@ class WhisperApp(QMainWindow):
         """Download the selected model"""
         model_name = self.model_selector.currentText()
         
-        if self.is_model_downloaded(model_name):
-            reply = QMessageBox.question(
-                self, 
-                'Model exists',
-                f'The {model_name} model is already downloaded. Download again?',
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            if reply == QMessageBox.No:
-                return
-
-        self.status_text.setText(f"Status: Downloading {model_name} model...")
-        self.progress_bar.setVisible(True)
-        self.download_button.setEnabled(False)
-        QApplication.processEvents()
-
         try:
+            import urllib.request
+            from pathlib import Path
+            
             # Get the download directory
-            download_dir = self.get_model_path(model_name)
+            cache_dir = Path.home() / '.cache' / 'whisper'
+            cache_dir.mkdir(parents=True, exist_ok=True)
             
-            # Use whisper's internal download function
-            _download(_MODELS[model_name], download_dir, in_memory=False)
-            
-            self.status_text.setText(f"Status: Successfully downloaded {model_name} model")
-            QMessageBox.information(self, "Success", f"Successfully downloaded {model_name} model!")
-            
+            model_path = cache_dir / f"{model_name}.pt"
+            model_url = WHISPER_MODELS[model_name]
+
+            self.status_text.setText(f"Status: Downloading {model_name} model...")
+            self.progress_bar.setVisible(True)
+            self.download_button.setEnabled(False)
+            QApplication.processEvents()
+
+            def report_progress(block_num, block_size, total_size):
+                progress = block_num * block_size * 100 / total_size
+                self.progress_bar.setValue(int(progress))
+                QApplication.processEvents()
+
+            try:
+                # Download the file with progress reporting
+                urllib.request.urlretrieve(
+                    model_url,
+                    model_path,
+                    reporthook=report_progress
+                )
+                
+                if model_path.exists() and model_path.stat().st_size > 0:
+                    self.status_text.setText(f"Status: Successfully downloaded {model_name} model")
+                    QMessageBox.information(self, "Success", f"Successfully downloaded {model_name} model!")
+                else:
+                    raise Exception("Downloaded file is empty")
+                    
+            except Exception as e:
+                print(f"Download error: {str(e)}")
+                if model_path.exists():
+                    model_path.unlink()  # Delete the failed download
+                raise
+                
         except Exception as e:
             error_msg = f"Error downloading model: {str(e)}"
             self.status_text.setText(f"Status: {error_msg}")
@@ -141,8 +162,9 @@ class WhisperApp(QMainWindow):
 
     def load_model(self):
         model_name = self.model_selector.currentText()
-
-        if not self.is_model_downloaded(model_name):
+        model_path = Path.home() / '.cache' / 'whisper' / f"{model_name}.pt"
+        
+        if not model_path.exists() or model_path.stat().st_size == 0:
             reply = QMessageBox.question(
                 self,
                 'Model not found',
@@ -154,14 +176,13 @@ class WhisperApp(QMainWindow):
                 self.download_model()
             else:
                 return False
-        
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
         try:
             self.status_text.setText(f"Status: Loading {model_name} model...")
             QApplication.processEvents()
             
-            # Use the default cache location for loading
             self.model = whisper.load_model(model_name, device=device)
             self.status_text.setText(f"Status: Successfully loaded {model_name} model")
             return True
@@ -169,9 +190,8 @@ class WhisperApp(QMainWindow):
         except Exception as e:
             error_msg = f"Error loading model: {str(e)}"
             self.status_text.setText(f"Status: {error_msg}")
-            self.result_text.setText(error_msg)
             QMessageBox.critical(self, "Error", error_msg)
-            raise
+            return False
 
     def transcribe_audio(self):
         # possibly needs edit MDB
