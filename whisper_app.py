@@ -1,7 +1,8 @@
 import os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, 
                               QFileDialog, QTextEdit, QVBoxLayout, 
-                              QWidget, QComboBox, QLabel)
+                              QWidget, QComboBox, QLabel, QHBoxLayout,
+                              QProgressBar)
 import sys
 import torch
 import whisper
@@ -36,13 +37,26 @@ class WhisperApp(QMainWindow):
     def setup_ui(self):
         layout = QVBoxLayout()
         
-        # Model selection section
+        # Model selection section with download button
+        model_layout = QHBoxLayout()
+
         model_label = QLabel("Whisper Model:")
-        layout.addWidget(model_label)
+        model_layout = layout.addWidget(model_label)
         
         self.model_selector = QComboBox()
-        self.model_selector.addItems(["small", "large"])
+        self.model_selector.addItems(["base", "small", "large"])
         layout.addWidget(self.model_selector)
+
+        self.download_button = QPushButton("Download Selected Model")
+        self.download_button.clicked.connect(self.download_model)
+        model_layout.addWidget(self.download_button)
+
+        layout.addLayout(model_layout)
+
+        # Progress bar for downloads
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
         
         # Device info
         device_info = "CUDA Available" if torch.cuda.is_available() else "Using CPU"
@@ -54,16 +68,17 @@ class WhisperApp(QMainWindow):
         self.transcribe_button.clicked.connect(self.transcribe_audio)
         layout.addWidget(self.transcribe_button)
 
+        # Copy button
+        self.copy_button = QPushButton("Copy Transcription")
+        self.copy_button.clicked.connect(self.copy_transcription)
+        layout.addWidget(self.copy_button)
+        
         # Status and results
         self.status_text = QLabel("Status: Ready")
         layout.addWidget(self.status_text)
         
         self.result_text = QTextEdit()
         layout.addWidget(self.result_text)
-
-        self.copy_button = QPushButton("Copy Transcription")
-        self.copy_button.clicked.connect(self.copy_transcription)
-        layout.addWidget(self.copy_button)
 
         container = QWidget()
         container.setLayout(layout)
